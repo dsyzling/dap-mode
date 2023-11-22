@@ -305,8 +305,46 @@ strings, for the sake of launch.json feature parity."
                                    :request "launch"
                                    :name "Python :: Run pytest (at point)"))
 
+
+(defun dap-python--handle-debugpy-attach (debug-session parsed-msg)
+  "Handle PARSED-MSG request to debug subprocess from DEBUG-SESSION.
+
+debugpyAttach will be sent as a request when a subprocess is spawned by the
+parent debugger session. The dap-client should initiate a new session,
+initialise the session and attach with parameters provided by debugpy
+within the original messasge.
+
+This function creates a child session of the parent DEBUG-SESSION
+maintaining a hierarchy of debug sessions to manage multiple processes."
+  (-let* (((&hash "name" name "connect" connect) parsed-msg)
+          (launch-args (cl-copy-list (dap--debug-session-launch-args debug-session))))
+    ;; modify launch args for our new create session
+    (plist-put launch-args :request "attach")
+    (plist-put launch-args :name (dap--calculate-unique-name name (dap--get-sessions)))
+    (plist-put launch-args :dap-server-path nil)
+    (plist-put launch-args :host (gethash "host" connect))
+    (plist-put launch-args :debugServer (gethash "port" connect))
+
+    ;; start new session for child process
+    (let ((new-session (dap--create-child-session debug-session launch-args)))
+      ;; send initialise
+      (dap--send-message
+       (dap--initialize-message "python-run-with-python-path")
+       (dap--session-init-resp-handler
+        new-session
+        (lambda (_result)
+          ;; send attach with arguments given to us by startDebugging/debugpyAttach message.
+          (dap--send-message
+           (dap--make-request "attach" parsed-msg)
+           (lambda (_result))
+           new-session)))
+       new-session))))
+
+
 (cl-defmethod dap-handle-event ((_event-type (eql debugpyWaitingForServer)) _session _params))
-(cl-defmethod dap-handle-event ((_event-type (eql debugpyAttach)) _session _params))
+(cl-defmethod dap-handle-event ((_event-type (eql debugpyAttach)) _session _params)
+  (dap-python--handle-debugpy-attach _session _params))
+
 
 (provide 'dap-python)
 ;;; dap-python.el ends here

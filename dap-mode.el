@@ -298,7 +298,11 @@ request on hitting a breakpoint. 0 means to return all frames."
   ;; Optional metadata to set and get it.
   (metadata (make-hash-table :test 'eql))
   ;; when t the output already has been displayed for this buffer.
-  (output-displayed))
+  (output-displayed)
+  ;; child debug sessions
+  (child-debug-sessions nil)
+  ;; parent debug session
+  (parent-debug-session nil))
 
 (cl-defstruct dap--parser
   (waiting-for-response nil)
@@ -377,6 +381,33 @@ has succeeded."
     (if (dap--session-running debug-session)
         debug-session
       (error "Session %s is terminated" (dap--debug-session-name debug-session)))))
+
+(defun dap--add-child-debug-session (parent-session child-session)
+  "Add CHILD-SESSION as a child debugging session of PARENT-SESSION."
+  (push child-session (dap--debug-session-child-debug-sessions parent-session)))
+
+(defun dap--remove-child-debug-session (parent-session child-session)
+  "Remove CHILD-SESSION from the parent debugging session PARENT-SESSION."
+  (setf (dap--debug-session-child-debug-sessions parent-session)
+        (delete child-session (dap--debug-session-child-debug-sessions parent-session))))
+
+(defun dap--create-child-session (parent-session launch-args)
+  "Create a new child debugging session to debug a subprocess.
+
+The new session will be created as a child session of PARENT-SESSION
+using the LAUNCH-ARGS provided. 
+
+The new child debugging session will be returned."
+  (let ((new-session (dap--create-session launch-args))
+        (debug-sessions (dap--get-sessions)))
+    ;; add this session to our parent debug session
+    (dap--add-child-debug-session parent-session new-session)
+    ;; set parent of our new session
+    (setf (dap--debug-session-parent-debug-session new-session) parent-session)
+    ;; add to all workspace sessions so that breakpoints can be set correctly.
+    (dap--set-sessions (cons new-session debug-sessions))
+      
+    new-session))
 
 (defun dap-breakpoint-get-point (breakpoint)
   "Get position of BREAKPOINT."
@@ -988,6 +1019,9 @@ PARAMS are the event params.")
          (puthash thread-id (or type reason)
                   (dap--debug-session-thread-states debug-session))
          (dap--select-thread-id debug-session thread-id)
+         ;; if breakpoint triggered in a session that isn't current then switch to that session
+         (unless (equal debug-session (dap--cur-session))
+           (dap--set-cur-session debug-session))
          (when (and (string= "exception" reason)
                     (gethash "supportsExceptionInfoRequest" (dap--debug-session-current-capabilities debug-session)))
            (dap--send-message
@@ -998,7 +1032,14 @@ PARAMS are the event params.")
             debug-session))
          (run-hooks 'dap-session-changed-hook)))
       ("terminated"
-       (dap--mark-session-as-terminated debug-session))
+       (progn
+         ;; do we have a parent session?
+         (if-let (parent-session (dap--debug-session-parent-debug-session debug-session))
+             ;; remove this session from parent's children and switch to the parent session.
+             (progn
+               (dap--remove-child-debug-session parent-session debug-session)
+               (dap--set-cur-session parent-session)))
+         (dap--mark-session-as-terminated debug-session)))
       ("usernotification"
        (-let [(&hash "notificationType" notification-type "message") body]
          (warn  (format "[%s] %s" notification-type message))))
