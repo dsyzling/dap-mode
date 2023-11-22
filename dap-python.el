@@ -329,7 +329,7 @@ maintaining a hierarchy of debug sessions to manage multiple processes."
     (let ((new-session (dap--create-child-session debug-session launch-args)))
       ;; send initialise
       (dap--send-message
-       (dap--initialize-message "python-run-with-python-path")
+       (dap--initialize-message "python")
        (dap--session-init-resp-handler
         new-session
         (lambda (_result)
