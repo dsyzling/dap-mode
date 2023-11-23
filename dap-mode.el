@@ -1117,12 +1117,12 @@ terminal configured (probably xterm)."
                         (dap--resp-handler) debug-session))))
 
 (lsp-defun dap--start-debugging ((debug-session &as &dap-session 'launch-args 'proc 'name)
-                                 (&hash "seq" "arguments" (&hash "configuration" "request")))
-
+                                 (&hash "seq" "arguments"
+                                        (&hash "configuration" (&hash "connect") "request" "configuration")))
   (-let* (((&plist :debugServer port :host) launch-args)
           (new-launch-args (list
-                            :host host
-                            :debugServer port
+                            :host (if connect (gethash "host" connect) host)
+                            :debugServer (if connect (gethash "port" connect) port)
                             :request request
                             :name (format "Child of %s" name))))
     (ht-aeach (plist-put new-launch-args (intern (concat ":" key)) value) configuration)
@@ -1210,6 +1210,7 @@ ADAPTER-ID the id of the adapter."
                          :supportsVariableType t
                          :supportsVariablePaging t
                          :supportsRunInTerminalRequest t
+                         :supportsStartDebuggingRequest t
                          :locale "en-us")
         :type "request"))
 
