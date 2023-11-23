@@ -1118,7 +1118,8 @@ terminal configured (probably xterm)."
 
 (lsp-defun dap--start-debugging ((debug-session &as &dap-session 'launch-args 'proc 'name)
                                  (&hash "seq" "arguments"
-                                        (&hash "configuration" (&hash "connect") "request" "configuration")))
+                                        (&hash "configuration" (&hash "connect")
+                                               "request" "configuration")))
   (-let* (((&plist :debugServer port :host) launch-args)
           (new-launch-args (list
                             :host (if connect (gethash "host" connect) host)
