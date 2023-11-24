@@ -384,7 +384,9 @@ has succeeded."
 
 (defun dap--add-child-debug-session (parent-session child-session)
   "Add CHILD-SESSION as a child debugging session of PARENT-SESSION."
-  (push child-session (dap--debug-session-child-debug-sessions parent-session)))
+  (push child-session (dap--debug-session-child-debug-sessions parent-session))
+  ;; set parent of child session.
+  (setf (dap--debug-session-parent-debug-session child-session) parent-session))
 
 (defun dap--remove-child-debug-session (parent-session child-session)
   "Remove CHILD-SESSION from the parent debugging session PARENT-SESSION."
@@ -402,11 +404,8 @@ The new child debugging session will be returned."
         (debug-sessions (dap--get-sessions)))
     ;; add this session to our parent debug session
     (dap--add-child-debug-session parent-session new-session)
-    ;; set parent of our new session
-    (setf (dap--debug-session-parent-debug-session new-session) parent-session)
     ;; add to all workspace sessions so that breakpoints can be set correctly.
     (dap--set-sessions (cons new-session debug-sessions))
-      
     new-session))
 
 (defun dap-breakpoint-get-point (breakpoint)
@@ -1128,7 +1127,9 @@ terminal configured (probably xterm)."
                             :name (format "Child of %s" name))))
     (ht-aeach (plist-put new-launch-args (intern (concat ":" key)) value) configuration)
     (dap-start-debugging-noexpand new-launch-args)
-
+    ;; start debugging will set the current session to the new child
+    ;; session, add the new child to the parent and set the child's parent.
+    (dap--add-child-debug-session debug-session (dap--cur-session))
     (dap--send-message (dap--make-success-response
                         seq "startDebugging")
                        (dap--resp-handler) debug-session)))
