@@ -305,7 +305,6 @@ strings, for the sake of launch.json feature parity."
                                    :request "launch"
                                    :name "Python :: Run pytest (at point)"))
 
-
 (defun dap-python--handle-debugpy-attach (debug-session parsed-msg)
   "Handle PARSED-MSG request to debug subprocess from DEBUG-SESSION.
 
@@ -317,14 +316,12 @@ within the original messasge.
 This function creates a child session of the parent DEBUG-SESSION
 maintaining a hierarchy of debug sessions to manage multiple processes."
   (-let* (((&hash "name" name "connect" connect) parsed-msg)
-          (launch-args (cl-copy-list (dap--debug-session-launch-args debug-session))))
-    ;; modify launch args for our new create session
-    (plist-put launch-args :request "attach")
-    (plist-put launch-args :name (dap--calculate-unique-name name (dap--get-sessions)))
-    (plist-put launch-args :dap-server-path nil)
-    (plist-put launch-args :host (gethash "host" connect))
-    (plist-put launch-args :debugServer (gethash "port" connect))
-
+          (launch-args (list
+                        :request "attach"
+                        :name (dap--calculate-unique-name name (dap--get-sessions))
+                        :dap-server-path nil
+                        :host (gethash "host" connect)
+                        :debugServer (gethash "port" connect))))
     ;; start new session for child process
     (let ((new-session (dap--create-child-session debug-session launch-args)))
       ;; send initialise
@@ -333,7 +330,8 @@ maintaining a hierarchy of debug sessions to manage multiple processes."
        (dap--session-init-resp-handler
         new-session
         (lambda (_result)
-          ;; send attach with arguments given to us by startDebugging/debugpyAttach message.
+          ;; send attach with arguments given to us by startDebugging/
+          ;; debugpyAttach message.
           (dap--send-message
            (dap--make-request "attach" parsed-msg)
            (lambda (_result))
